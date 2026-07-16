@@ -1,0 +1,9 @@
+streamlit
+pandas
+numpy
+yfinance
+feedparser
+torch
+transformers
+pandas_ta_classic
+scikit-learn
