@@ -5,5 +5,5 @@ yfinance
 feedparser
 torch
 transformers
-pandas_ta_classic
+pandas-ta-classic
 scikit-learn
