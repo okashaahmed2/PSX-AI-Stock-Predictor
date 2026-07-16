@@ -1,0 +1,4 @@
+psx_project.db
+__pycache__/
+.env
+.venv
