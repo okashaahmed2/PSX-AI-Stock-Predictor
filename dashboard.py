@@ -25,45 +25,19 @@ AVAILABLE_STOCKS = {
     "Pakistan Petroleum Limited (PPL)": "PPL.KA"
 }
 
-# --- 2. LOAD FINBERT MODEL (Local with Cloud API Fallback) ---
-@st.cache_resource
-def load_finbert():
-    try:
-        # Local system par PyTorch aur Transformers try karein (Inside try-except block)
-        import torch
-        from transformers import AutoTokenizer, AutoModelForSequenceClassification, pipeline
-        
-        tokenizer = AutoTokenizer.from_pretrained("ProsusAI/finbert")
-        model = AutoModelForSequenceClassification.from_pretrained("ProsusAI/finbert")
-        nlp_classifier = pipeline("sentiment-analysis", model=model, tokenizer=tokenizer)
-        return {"type": "local", "pipeline": nlp_classifier}
-    except Exception as e:
-        # Agar local load na ho (jaise Streamlit Cloud par), toh API use karein
-        return {"type": "api", "pipeline": None}
-
-finbert_setup = load_finbert()
-
-# NLP Sentiment helper function
+# --- 2. SENTIMENT ANALYSIS VIA API ONLY (NO TORCH / TRANSFORMERS SCAN REQUIRED) ---
 def analyze_text_sentiment(text):
-    if finbert_setup["type"] == "local":
-        try:
-            # Local execution
-            result = finbert_setup["pipeline"](text[:512])[0]
-            return result['label'].upper(), result['score']
-        except:
-            pass
-    
-    # Free API Fallback (No PyTorch required on Cloud!)
+    # Free API Fallback (No PyTorch/Torchvision required on Cloud!)
     API_URL = "https://api-inference.huggingface.co/models/ProsusAI/finbert"
     try:
-        response = requests.post(API_URL, json={"inputs": text[:512]})
+        response = requests.post(API_URL, json={"inputs": text[:512]}, timeout=10)
         if response.status_code == 200:
             api_result = response.json()[0][0] # Get highest prediction
             return api_result['label'].upper(), api_result['score']
-    except:
+    except Exception as e:
         pass
     
-    # Fallback agar kuch bhi na chale
+    # Fallback agar API down ho ya na chal sake
     return "NEUTRAL", 0.0
 
 # --- 3. DYNAMIC DATA UPDATER FUNCTIONS ---
@@ -126,7 +100,7 @@ def fetch_and_save_live_stocks(ticker_symbol):
             
         for i, date_str in enumerate(dates):
             close_val = prices[i]
-            open_val = round(close_val * np.random.uniform(0.99, 1.01), 2)
+            open_val = round(close_val * np.uniform(0.99, 1.01), 2)
             high_val = round(max(open_val, close_val) * np.random.uniform(1.0, 1.015), 2)
             low_val = round(min(open_val, close_val) * np.random.uniform(0.985, 1.0), 2)
             volume_val = int(np.random.randint(150000, 600000))
