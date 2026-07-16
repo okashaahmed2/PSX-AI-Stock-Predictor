@@ -1,5 +1,3 @@
-torch
-transformers
 streamlit
 pandas
 numpy
@@ -7,3 +5,4 @@ yfinance
 feedparser
 pandas-ta-classic
 scikit-learn
+requests

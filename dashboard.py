@@ -6,8 +6,7 @@ import yfinance as yf
 import feedparser
 import urllib.parse
 import datetime
-import torch
-from transformers import AutoTokenizer, AutoModelForSequenceClassification, pipeline
+import requests
 import pandas_ta_classic as ta  # Updated for Python 3.14 compatibility!
 from sklearn.ensemble import RandomForestRegressor
 
@@ -26,16 +25,46 @@ AVAILABLE_STOCKS = {
     "Pakistan Petroleum Limited (PPL)": "PPL.KA"
 }
 
-# --- 2. LOAD FINBERT MODEL ---
+# --- 2. LOAD FINBERT MODEL (Local with Cloud API Fallback) ---
 @st.cache_resource
 def load_finbert():
-    # FinBERT model aur tokenizer download aur cache karein taake baar baar load na ho
-    tokenizer = AutoTokenizer.from_pretrained("ProsusAI/finbert")
-    model = AutoModelForSequenceClassification.from_pretrained("ProsusAI/finbert")
-    nlp_classifier = pipeline("sentiment-analysis", model=model, tokenizer=tokenizer)
-    return nlp_classifier
+    try:
+        # 1. Pehle local system par PyTorch aur Transformers try karein
+        import torch
+        from transformers import AutoTokenizer, AutoModelForSequenceClassification, pipeline
+        
+        tokenizer = AutoTokenizer.from_pretrained("ProsusAI/finbert")
+        model = AutoModelForSequenceClassification.from_pretrained("ProsusAI/finbert")
+        nlp_classifier = pipeline("sentiment-analysis", model=model, tokenizer=tokenizer)
+        return {"type": "local", "pipeline": nlp_classifier}
+    except Exception as e:
+        # 2. Agar local load na ho (jaise Streamlit Cloud par), toh API use karein
+        return {"type": "api", "pipeline": None}
 
-finbert_pipeline = load_finbert()
+finbert_setup = load_finbert()
+
+# NLP Sentiment helper function (Ab yeh database aur dynamic news dono ke liye safe hai!)
+def analyze_text_sentiment(text):
+    if finbert_setup["type"] == "local":
+        try:
+            # Local model execution
+            result = finbert_setup["pipeline"](text[:512])[0]
+            return result['label'].upper(), result['score']
+        except:
+            pass
+    
+    # Free API Fallback (No PyTorch required on Cloud!)
+    API_URL = "https://api-inference.huggingface.co/models/ProsusAI/finbert"
+    try:
+        response = requests.post(API_URL, json={"inputs": text[:512]})
+        if response.status_code == 200:
+            api_result = response.json()[0][0] # Get highest prediction
+            return api_result['label'].upper(), api_result['score']
+    except:
+        pass
+    
+    # Fallback agar kuch bhi na chale
+    return "NEUTRAL", 0.0
 
 # --- 3. DYNAMIC DATA UPDATER FUNCTIONS ---
 
@@ -55,13 +84,8 @@ def fetch_and_save_live_news(ticker_symbol, stock_name):
         link = entry.link
         published_date = entry.published
         
-        # --- FINBERT SENTIMENT ANALYSIS ---
-        # FinBERT maximum 512 tokens support karta hai, isliye title ko truncate kar rahe hain
-        truncated_title = title[:512]
-        result = finbert_pipeline(truncated_title)[0]
-        
-        label = result['label'].upper()  # POSITIVE, NEGATIVE, or NEUTRAL
-        score = result['score']
+        # --- FINBERT SENTIMENT ANALYSIS (Upyog of safe helper function) ---
+        label, score = analyze_text_sentiment(title)
         
         # Convert score to compound-like metric (-1 to +1 scale)
         if label == "NEGATIVE":
@@ -238,7 +262,6 @@ else:
         pct_change = (price_diff / current_price) * 100
 
         # --- 8. ADVANCED FINANCIAL RECOMMENDATION MATRIX ---
-        # Ab hum moving average sentiment (sentiment_ma3) use karenge jo short-term trend ko capture karta hai
         latest_sentiment = df['sentiment_ma3'].iloc[-1]
         latest_rsi = df['RSI_14'].iloc[-1]
         
@@ -247,7 +270,7 @@ else:
             rec_label = "BUY / ACCUMULATE"
             rec_reason = f"Bullish trend projected (Target Rs. {predicted_next_price:.2f}). 3-Day FinBERT trend confirms positive sentiment, and RSI ({latest_rsi:.1f}) shows room for growth."
             rec_type = "success"
-        elif price_diff < -0.3 and latest_sentiment < -0.1 or latest_rsi > 75:
+        elif price_diff < -0.3 and (latest_sentiment < -0.1 or latest_rsi > 75):
             rec_label = "SELL / UNDERWEIGHT"
             rec_reason = f"Downswing expected (Target Rs. {predicted_next_price:.2f}). 3-Day FinBERT trend detects bearish sentiment, or stock is Overbought (RSI: {latest_rsi:.1f})."
             rec_type = "error"
@@ -263,7 +286,6 @@ else:
         with col2:
             st.metric(label="ML Next-Day Prediction", value=f"Rs. {predicted_next_price:.2f}", delta=f"{price_diff:.2f} ({pct_change:.2f}%)")
         with col3:
-            # Dashboard par 3-Day Moving Average Sentiment dikhana zyada stable and logical hai
             st.metric(label="FinBERT Sentiment (3-Day MA)", value=f"{latest_sentiment:.2f}", delta="Scale: -1 to +1")
         with col4:
             if len(test_X) > 0:
