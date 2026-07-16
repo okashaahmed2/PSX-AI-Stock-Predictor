@@ -29,7 +29,7 @@ AVAILABLE_STOCKS = {
 @st.cache_resource
 def load_finbert():
     try:
-        # 1. Pehle local system par PyTorch aur Transformers try karein
+        # Local system par PyTorch aur Transformers try karein (Inside try-except block)
         import torch
         from transformers import AutoTokenizer, AutoModelForSequenceClassification, pipeline
         
@@ -38,16 +38,16 @@ def load_finbert():
         nlp_classifier = pipeline("sentiment-analysis", model=model, tokenizer=tokenizer)
         return {"type": "local", "pipeline": nlp_classifier}
     except Exception as e:
-        # 2. Agar local load na ho (jaise Streamlit Cloud par), toh API use karein
+        # Agar local load na ho (jaise Streamlit Cloud par), toh API use karein
         return {"type": "api", "pipeline": None}
 
 finbert_setup = load_finbert()
 
-# NLP Sentiment helper function (Ab yeh database aur dynamic news dono ke liye safe hai!)
+# NLP Sentiment helper function
 def analyze_text_sentiment(text):
     if finbert_setup["type"] == "local":
         try:
-            # Local model execution
+            # Local execution
             result = finbert_setup["pipeline"](text[:512])[0]
             return result['label'].upper(), result['score']
         except:
@@ -84,7 +84,7 @@ def fetch_and_save_live_news(ticker_symbol, stock_name):
         link = entry.link
         published_date = entry.published
         
-        # --- FINBERT SENTIMENT ANALYSIS (Upyog of safe helper function) ---
+        # --- SENTIMENT ANALYSIS ---
         label, score = analyze_text_sentiment(title)
         
         # Convert score to compound-like metric (-1 to +1 scale)
