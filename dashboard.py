@@ -100,7 +100,8 @@ def fetch_and_save_live_stocks(ticker_symbol):
             
         for i, date_str in enumerate(dates):
             close_val = prices[i]
-            open_val = round(close_val * np.uniform(0.99, 1.01), 2)
+            # --- FIXED NP.RANDOM.UNIFORM TYPO HERE ---
+            open_val = round(close_val * np.random.uniform(0.99, 1.01), 2)
             high_val = round(max(open_val, close_val) * np.random.uniform(1.0, 1.015), 2)
             low_val = round(min(open_val, close_val) * np.random.uniform(0.985, 1.0), 2)
             volume_val = int(np.random.randint(150000, 600000))
